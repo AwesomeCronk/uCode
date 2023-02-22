@@ -29,18 +29,20 @@ if __name__ == '__main__':
     args = getArgs()
 
     with open(args.infile, 'r') as jsonFile: json = json5.load(jsonFile)
-    print('Read JSON5 from {}'.format(args.infile))
+
     lines = json['lines']
     states = json['states']
-    numLines = json['numLines']
+    stateOrder = json['stateOrder']
+    numLines = json['numLines']             # Control lines
+    numConditions = json['numConditions']   # Condition inputs
     numStates = json['numStates']
     numSteps = json['numSteps']
-    numConditions = json['numConditions']
 
     if len(lines) != numLines: print('Line count {} is incorrect'.format(len(lines))); exit()
-    if len(states) != numStates: print('State count {} is incorrect'.format(len(states))); exit()
-    for s, state in enumerate(states):
-        if len(json[state]) > numSteps : print('Too many steps ({}) for state {}'.format(len(json[state]), s)); exit()
+    if len(stateOrder) != numStates: print('State order count {} is incorrect'.format(len(stateOrder))); exit()
+    for s, state in enumerate(states):  # `s` is state name, `state` is state contents
+        if len(json[state]) > numSteps and s in stateOrder:
+            print('Too many steps ({}) for state {}'.format(len(json[state]), s)); exit()
 
     def encodeStep(step):
         bits = [0] * len(lines)
@@ -68,6 +70,30 @@ if __name__ == '__main__':
         return int.to_bytes(intValue, len(lines) // 8, 'big')
 
     binary = b''
+
+    for s in stateOrder:
+        state = states[s]
+        if args.verbose >= 1: print('State {}: {}'.format(s, state))
+
+        # Allows states to leave off any steps which need not be specified
+        # If a state needs less steps than specified, it can define only what it needs and the rest will be filled in
+        while len(state) < numSteps: state.append(json['defaultStep'])
+
+        for step in state:
+            if isinstance(step, list):
+                if args.verbose >= 2: print('Constant step')
+                # Need to cover the whole address range that the condition lines might select (2 ** numConditions)
+                binary += encodeStep(step) * (2 ** numConditions)
+
+            elif isinstance(step, dict):
+                if args.verbose >= 2: print('Conditional step')
+                for i in range(2 ** numConditions):
+                    matches = []
+                    for condition in step.keys():
+                        
+
+
+
     for i, state in enumerate(states):
         if args.verbose >= 1: print('State {}: {}'.format(i, state))
 
