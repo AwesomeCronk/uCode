@@ -7,7 +7,26 @@ import sys
 
 
 def findChunk(source):
-    pass
+    depth = 1
+    i = 0
+    char = source[i]
+
+    # Seek to first `(`
+    while char != '(':
+        i += 1
+        char = source[i]
+
+    beg = i
+    
+    while depth != 0:
+        i += 1
+        char = source[i]
+        if char == '(': depth += 1
+        elif char == ')': depth -= 1
+
+    end = i
+
+    return beg, end
 
 def evaluatePrecedence(source, recursiveness=0):
     if '(' in source:
@@ -15,12 +34,7 @@ def evaluatePrecedence(source, recursiveness=0):
         print('  ' * recursiveness, beg, end)
         source = source[:beg] + evaluatePrecedence(source[beg+1:end], recursiveness+1) + source[end+1:]
 
-    if source[0] == '!':
-        chunk = evaluatePrecedence(source[1:])
-        if chunk == '0': return '1'
-        else: return '0'
-
-    elif '|' in source:
+    if '|' in source:
         chunks = [evaluatePrecedence(chunk) for chunk in source.split('|')]
         # OR the first two together and delete the second until there's only one left
         while len(chunks) > 1:
@@ -43,6 +57,11 @@ def evaluatePrecedence(source, recursiveness=0):
             chunks[0] = str(int(chunks[0]) & int(chunks[1]))
             del chunks[1]
         return chunks[0]
+    
+    elif source[0] == '!':
+        chunk = evaluatePrecedence(source[1:])
+        if chunk == '0': return '1'
+        else: return '0'
 
     
 
