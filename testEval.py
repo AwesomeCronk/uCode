@@ -1,11 +1,53 @@
 import sys
 
 # a&b = a AND b
-# a|b = a OR b
 # a^b = a XOR b
+# a|b = a OR b
 # !a = NOT a
 
-def evaluate(source, recursiveness=0):
+
+def findChunk(source):
+    pass
+
+def evaluatePrecedence(source, recursiveness=0):
+    if '(' in source:
+        beg, end = findChunk(source)
+        print('  ' * recursiveness, beg, end)
+        source = source[:beg] + evaluatePrecedence(source[beg+1:end], recursiveness+1) + source[end+1:]
+
+    if source[0] == '!':
+        chunk = evaluatePrecedence(source[1:])
+        if chunk == '0': return '1'
+        else: return '0'
+
+    elif '|' in source:
+        chunks = [evaluatePrecedence(chunk) for chunk in source.split('|')]
+        # OR the first two together and delete the second until there's only one left
+        while len(chunks) > 1:
+            chunks[0] = str(int(chunks[0]) | int(chunks[1]))
+            del chunks[1]
+        return chunks[0]
+    
+    elif '^' in source:
+        chunks = [evaluatePrecedence(chunk) for chunk in source.split('^')]
+        # XOR the first two together and delete the second until there's only one left
+        while len(chunks) > 1:
+            chunks[0] = str(int(chunks[0]) ^ int(chunks[1]))
+            del chunks[1]
+        return chunks[0]
+    
+    elif '&' in source:
+        chunks = [evaluatePrecedence(chunk) for chunk in source.split('&')]
+        # AND the first two together and delete the second until there's only one left
+        while len(chunks) > 1:
+            chunks[0] = str(int(chunks[0]) & int(chunks[1]))
+            del chunks[1]
+        return chunks[0]
+
+    
+
+
+def evaluateLeftRight(source, recursiveness=0):
     a = ''
     b = ''
     op = ''
@@ -17,7 +59,7 @@ def evaluate(source, recursiveness=0):
         a = source[0]
         op = source[1]
         if source[2] == '(':
-            b = evaluate(source[3:-1], recursiveness + 1)
+            b = evaluateLeftRight(source[3:-1], recursiveness + 1)
         else:
             b = source[2]
 
@@ -26,7 +68,7 @@ def evaluate(source, recursiveness=0):
         raise NotImplementedError('We don\'t support "!" yet')
 
     elif source[0] == '(':
-        # Cycle through `source` until the matching ")" is found; `a` is `evaluate(<that mess>)`
+        # Cycle through `source` until the matching ")" is found; `a` is `evaluateLeftRight(<that mess>)`
         index = 0
         blockDepth = 1
         while blockDepth > 0:
@@ -35,10 +77,10 @@ def evaluate(source, recursiveness=0):
             elif source[index] == ')': blockDepth -= 1
         # `index` points to closing parenthesis
         
-        a = evaluate(source[1:index], recursiveness + 1)
+        a = evaluateLeftRight(source[1:index], recursiveness + 1)
         op = source[index + 1]
         if source[index + 2] == '(':
-            b = evaluate(source[3:-1], recursiveness + 1)
+            b = evaluateLeftRight(source[3:-1], recursiveness + 1)
         else:
             b = source[2]
 
@@ -59,7 +101,7 @@ def evaluate(source, recursiveness=0):
     print('  ' * recursiveness + 'result: {}'.format(result))
     return result
     
-print(evaluate(sys.argv[1]))
+print(evaluateLeftRight(sys.argv[1]))
 
 # lines = ['a', 'b', 'c']
 # 
@@ -73,4 +115,4 @@ print(evaluate(sys.argv[1]))
 #     
 #     print(source)
 # 
-#     print(evaluate(source))
+#     print(evaluateLeftRight(source))
