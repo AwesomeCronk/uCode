@@ -69,6 +69,75 @@ if __name__ == '__main__':
         for bit in bits: intValue *= 2; intValue += bit
         return int.to_bytes(intValue, len(lines) // 8, 'big')
 
+    def evaluatePrecedence(source, recursiveness=0):
+
+        # a&b = a AND b
+        # a^b = a XOR b
+        # a|b = a OR b
+        # !a = NOT a
+
+        if source in ('0', '1'): return source
+        # print('  ' * recursiveness + 'Source: {}'.format(source))
+
+        while '(' in source or ')' in source:
+            depth = 1
+            i = 0
+            char = source[i]
+
+            # Seek to first `(`
+            while char != '(':
+                if char == ')': raise SyntaxError('unmatched ")" at {}'.format(i))    # Catches a `)` before any `(`
+                i += 1
+                char = source[i]
+
+            beg = i
+            
+            while depth != 0:
+                if depth < 0: raise SyntaxError('unmatched ")" at {}'.format(i))
+                i += 1
+                if i >= len(source): raise SyntaxError('Unmatched "(" at {}'.format(beg))
+                char = source[i]
+                if char == '(': depth += 1
+                elif char == ')': depth -= 1
+
+            end = i
+            # print('  ' * recursiveness + 'Parentheses {} thru {}'.format(beg, end))
+            source = source[:beg] + evaluatePrecedence(source[beg+1:end], recursiveness+1) + source[end+1:]
+
+        if '|' in source:
+            chunks = [evaluatePrecedence(chunk) for chunk in source.split('|')]
+            # OR the first two together and delete the second until there's only one left
+            while len(chunks) > 1:
+                # print('  ' * recursiveness + '{} OR {}'.format(*chunks[0:2]))
+                chunks[0] = str(int(chunks[0]) | int(chunks[1]))
+                del chunks[1]
+            return chunks[0]
+        
+        elif '^' in source:
+            chunks = [evaluatePrecedence(chunk) for chunk in source.split('^')]
+            # XOR the first two together and delete the second until there's only one left
+            while len(chunks) > 1:
+                # print('  ' * recursiveness + '{} XOR {}'.format(*chunks[0:2]))
+                chunks[0] = str(int(chunks[0]) ^ int(chunks[1]))
+                del chunks[1]
+            return chunks[0]
+        
+        elif '&' in source:
+            chunks = [evaluatePrecedence(chunk) for chunk in source.split('&')]
+            # AND the first two together and delete the second until there's only one left
+            while len(chunks) > 1:
+                # print('  ' * recursiveness + '{} AND {}'.format(*chunks[0:2]))
+                chunks[0] = str(int(chunks[0]) & int(chunks[1]))
+                del chunks[1]
+            return chunks[0]
+        
+        elif source[0] == '!':
+            chunk = evaluatePrecedence(source[1:])
+            # print('  ' * recursiveness + 'NOT {}'.format(chunk))
+            if chunk == '0': return '1'
+            else: return '0'
+        
+        else: return source
     binary = b''
 
     for s in stateOrder:
