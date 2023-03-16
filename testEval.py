@@ -1,11 +1,11 @@
 import sys
 
-# a&b = a AND b
-# a^b = a XOR b
-# a|b = a OR b
-# !a = NOT a
 
 def evaluate(source, recursiveness=0):
+    # a&b = a AND b
+    # a^b = a XOR b
+    # a|b = a OR b
+    # !a = NOT a
     if source in ('0', '1'): return source
 
     print('| ' * recursiveness + ',-Source: {}'.format(source))

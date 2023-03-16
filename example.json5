@@ -3,12 +3,12 @@
 // THIS IS NO LONGER TRUE!! I CHANGED IT TO TEST NEW UPDATES!!
 
 {
-    numLines: 24,
+    numControls: 24,
     numConditions: 3,
     numStates: 8,
     numSteps: 8,
 
-    lines: [
+    controlLines: [
         'Available_In',
         'Available_Out',
         'Desired_In',
@@ -35,7 +35,7 @@
         'State_0'
     ],
 
-    conditions: [
+    conditionLines: [
         'Sufficient',
         'PreviousIsFirst',
         'Ctrl_Alloc'
