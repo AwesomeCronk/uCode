@@ -1,14 +1,13 @@
-// This is the microcode from SiliconPython's MMU on 22-9-29, taken as an example of a microcode description.
+// This is the microcode from SiliconPython's MMU on 23-3-17, taken as an example of a microcode description.
 // https://github.com/AwesomeCronk/SiliconPython
-// THIS IS NO LONGER TRUE!! I CHANGED IT TO TEST NEW UPDATES!!
 
 {
-    numControls: 24,
-    numConditions: 3,
-    numStates: 8,
-    numSteps: 8,
+    NumControlLines: 24,
+    NumConditionLines: 3,
+    NumStates: 8,
+    NumSteps: 8,
 
-    controlLines: [
+    ControlLines: [
         'Available_In',
         'Available_Out',
         'Desired_In',
@@ -35,50 +34,50 @@
         'State_0'
     ],
 
-    conditionLines: [
+    ConditionLines: [
         'Sufficient',
         'PreviousIsFirst',
         'Ctrl_Alloc'
     ],
 
-    defaultStep: [],
+    DefaultStep: [],
 
-    states:
+    States:
     {
         blank: [],
 
-        idle: [
+        Idle: [
             {
-                'Ctrl_Alloc': ['/SetState:init'],
+                'Ctrl_Alloc': ['/SetState:Init'],
                 '': ['CPU_Enable', 'State_Set']
             }
         ],
 
-        init: [
+        Init: [
             ['Desired_In'],
             ['First_Out', 'Next_In'],
             ['Testing_In'],
-            ['/SetState:compare'],
+            ['/SetState:Compare'],
         ],
 
-        compare: [
+        Compare: [
             ['Testing_Out', 'Previous_In'],
             ['Next_Out', 'Testing_In'],
             ['Testing_Out', 'Memory_Address'],
             ['Memory_Read', 'Available_In'],
             {
-                'Sufficient': ['/SetState:splitBlock'],
-                '': ['/SetState:walk']
+                'Sufficient': ['/SetState:SplitBlock'],
+                '': ['/SetState:Walk']
             }
         ],
 
-        walk: [
+        Walk: [
             ['Testing_Out', 'Memory_AddressOffset'],
             ['Memory_Read', 'Next_In'],
-            ['/SetState:compare']
+            ['/SetState:Compare']
         ],
 
-        splitBlock: [
+        SplitBlock: [
             ['Split_Out', 'Memory_Address'],
             ['Memory_Write', 'Remaining_Out'],
             ['Testing_Out', 'Memory_AddressOffset'],
@@ -87,31 +86,31 @@
             ['Memory_Write', 'Next_Out'],
             {
                 'PreviousIsFirst': ['/SetState:RelocateFirstBlock'],
-                '': ['/SetState:redirectPreviousBlock']
+                '': ['/SetState:RedirectPreviousBlock']
             }
         ],
 
-        redirectPreviousBlock: [
+        RedirectPreviousBlock: [
             ['Previous_Out', 'Memory_AddressOffset'],
             ['Memory_Read', 'Next_In'],
-            ['/SetState:idle']
+            ['/SetState:Idle']
         ],
 
-        relocateFirstBlock: [
+        RelocateFirstBlock: [
             ['Testing_Out', 'Memory_AddressOffset'],
             ['Memory_Read', 'First_In'],
-            ['/SetState:idle']
+            ['/SetState:Idle']
         ],
     },
 
-    stateOrder: [
-        'idle',
-        'init',
-        'compare',
-        'walk',
-        'splitBlock',
-        'redirectPreviousBlock',
-        'relocateFirstBlock',
+    StateOrder: [
+        'Idle',
+        'Init',
+        'Compare',
+        'Walk',
+        'SplitBlock',
+        'RedirectPreviousBlock',
+        'RelocateFirstBlock',
         'blank'
     ]
 }

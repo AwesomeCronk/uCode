@@ -1,6 +1,6 @@
 import argparse, json5
 
-_version = '1.0.0'
+_version = '2.0.0'
 
 def getArgs():
     parser = argparse.ArgumentParser('uCode', description='v{}; Generates microcode ROM binaries. See https://github.com/AwesomeCronk/uCode for more information.'.format(_version))
@@ -152,30 +152,57 @@ def evaluateCondition(source, recursiveness=0):
     else: return source
 
 
+def macro_SetState(stateName):
+    # Easier way of changing state
+    # Requires that State_Set and State_0..State_N be available
+    # Treats State_0 as LSB in address
+    # All lists of bits have MSB at index 0
+
+    result = [0] * numControlLines
+    mask = [int(controlLine[0:6] == 'State_') for controlLine in controlLines]
+
+    stateNum = stateOrder.index(stateName)
+    bits = [int(bit) for bit in bin(stateNum)[2:].zfill(len(bin(numStates)[2:]) - 1)]   # State number as list of bits
+
+    stateLines = ['State_Set']
+    for i in range(len(bits)):
+        if bits[i] == 1:
+            stateLines.append('State_' + str(len(bits) - i - 1))
+
+    print('      State lines: {}'.format(stateLines))
+
+    for line in stateLines:
+        result[controlLines.index(line)] = 1
+
+    return result, mask
+
+macros = {
+    'SetState': macro_SetState
+}
+
 def encodeStep(step):
-    bits = [0] * len(controlLines)
+    bits = [0] * numControlLines
 
-    # Easier way of doing a Set_State operation
-    # Requires that State_Set and State_0..State_# be available
-    if len(step) == 1 and step[0][0:11] == 'State_Set>>':
-        # print('Quick state change')
-        stateName = step[0][11:]
-        stateNum = states.index(stateName)
-        binStr = bin(stateNum)[2:].zfill(len(bin(numStates)[2:]))
-        # Python uses bit 0 as MSB, Digital uses bit 0 as LSB, have to convert
-        stateLines = ['State_Set']
-        for i in range(len(binStr)):
-            if binStr[-i - 1] == '1': stateLines.append('State_' + str(i))
-        for line in stateLines: bits[len(controlLines) - controlLines.index(line) - 1] = 1
+    for entry in step:
+        if entry[0] == '/':
+            macroName = entry.split(':')[0][1:]
+            macroArgs = entry.split(':')[1:]
+            print('      Macro: {}, Args: {}'.format(macroName, macroArgs))
+            result, mask = macros[macroName](*macroArgs)
+            print('      Result: {}'.format(''.join([str(i) for i in result])))
+            print('      Mask:   {}'.format(''.join([str(i) for i in mask])))
+    
+            for i in range(numControlLines):
+                if mask[i]: bits[i] = result[i]
 
-    # Normal step encoding
-    else:
-        for line in step: bits[len(controlLines) - controlLines.index(line) - 1] = 1
+        else:
+            bits[controlLines.index(entry)] = 1
+        
 
-    # Convert bits to bytes and return
+    # Convert bit list to bytes and return
     intValue = 0
-    for bit in bits: intValue *= 2; intValue += bit
-    return int.to_bytes(intValue, len(controlLines) // 8, 'big')
+    for bit in bits: intValue <<= 1; intValue |= bit
+    return int.to_bytes(intValue, numControlLines // 8, 'big')
 
 
 if __name__ == '__main__':
@@ -184,19 +211,19 @@ if __name__ == '__main__':
 
     with open(args.infile, 'r') as jsonFile: json = json5.load(jsonFile)
 
-    numControls     = json['numControls']
-    numConditions   = json['numConditions']
-    numStates       = json['numStates']
-    numSteps        = json['numSteps']
-    controlLines    = json['controlLines']
-    conditionLines  = json['conditionLines']
-    states          = json['states']
-    stateOrder      = json['stateOrder']
+    numControlLines     = json['NumControlLines']
+    numConditionLines   = json['NumConditionLines']
+    numStates           = json['NumStates']
+    numSteps            = json['NumSteps']
+    controlLines        = json['ControlLines']
+    conditionLines      = json['ConditionLines']
+    states              = json['States']
+    stateOrder          = json['StateOrder']
 
     # Verification of line, condition, state, and step counts
-    if len(controlLines) != numControls: print('Line count {} does not match provided values'.format(len(controlLines))); exit(1)
+    if len(controlLines) != numControlLines: print('Line count {} does not match provided values'.format(len(controlLines))); exit(1)
     if len(controlLines) % 8 != 0: print('Line count {} must be a multiple of 8'.format(len(controlLines))); exit(1)
-    if len(conditionLines) != numConditions: print('Condition count {} does not match provided values'.format(len(conditionLines))); exit(1)
+    if len(conditionLines) != numConditionLines: print('Condition count {} does not match provided values'.format(len(conditionLines))); exit(1)
     if len(stateOrder) != numStates: print('State order count {} does not match provided values'.format(len(stateOrder))); exit(1)
     for s, stateName in enumerate(stateOrder):  # `s` is state name, `state` is state contents
         if len(states[stateName]) > numSteps and s in stateOrder:
@@ -211,7 +238,7 @@ if __name__ == '__main__':
         # Allows states to leave off any steps which need not be specified
         # If a state needs less steps than specified, it can define only what it needs and the rest will be filled in
         while len(states[stateName]) < numSteps:
-            try: states[stateName].append(json['defaultStep'])
+            try: states[stateName].append(json['DefaultStep'])
             except IndexError: print('Not all steps defined in state {} but defaultStep is not defined'.format(stateName)); exit(1)
 
         for s, step in enumerate(states[stateName]):
@@ -221,24 +248,24 @@ if __name__ == '__main__':
             if isinstance(step, list):
                 if len(step) == 0:
                     if args.verbose >= 2: print('blank')
-                    binary = binary + b'\x00' * ((len(controlLines) // 8) * (2 ** numConditions))
+                    binary = binary + b'\x00' * ((numControlLines // 8) * (2 ** numConditionLines))
 
                 else:
                     if args.verbose >= 2: print('constant')
-                    for k in range(2 ** numConditions):
+                    for k in range(2 ** numConditionLines):
                         binary = binary + encodeStep(step)
 
             # Or can be a dict of conditions and outputs and be conditional
             elif isinstance(step, dict):
                 if args.verbose >= 2: print('conditional')
-                validCases = [[None] * len(step) for _ in range(2 ** numConditions)]    # List of lists; indexed by case number, sublists indexed by condition number
+                validCases = [[None] * len(step) for _ in range(2 ** numConditionLines)]    # List of lists; indexed by case number, sublists indexed by condition number
 
                 for i0, condition in enumerate(step.keys()):
                     print('    Condition: "{}"'.format(condition))
                     if condition != '':
                         if not verifyCondition(condition, conditionLines): exit(1)  # `verifyCondition` will print the reason
 
-                        for i1 in range(2 ** numConditions):
+                        for i1 in range(2 ** numConditionLines):
                             evaluatable = condition
                             bits = list(bin(i1)[2:].zfill(len(conditionLines)))
                             # print('Bits:', bits)
