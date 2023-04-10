@@ -2,6 +2,26 @@ import argparse, json5
 
 _version = '2.0.0'
 
+
+verbosityLevels = [
+    'error',
+    'info',
+    'state',
+    'step',
+    'encode',
+    'condition',
+    'verify',
+    'evaluate',
+    'macro'
+]
+
+verbosityLevel = 1
+
+def vPrint(verbosity, *args, **kwargs):
+    if verbosityLevels.index(verbosity) <= verbosityLevel:
+        print(*args, **kwargs)
+
+
 def getArgs():
     parser = argparse.ArgumentParser('uCode', description='v{}; Generates microcode ROM binaries. See https://github.com/AwesomeCronk/uCode for more information.'.format(_version))
     parser.add_argument(
@@ -25,14 +45,14 @@ def getArgs():
     return parser.parse_args()
 
 
-def verifyCondition(source, names):
+def verifyCondition(source, names, verbose):
     specialChars = '!&^|()'
 
     # No special characters in names
     for name in names:
         for char in specialChars:
             if char in name:
-                print('Invalid name: "{}"'.format(name))
+                vPrint('error', 'Invalid name: "{}"'.format(name))
                 return False
 
     # Split source by all names
@@ -53,19 +73,19 @@ def verifyCondition(source, names):
 
     # No names next to each other
     if '' in pieces:
-        print('Cannot put two names next to each other')
+        vPrint('error', 'Cannot put two names next to each other')
         return False
     
     # No non-special characters except for names
     for piece in pieces:
         for char in piece:
             if not char in specialChars:
-                print('Character "{}" not part of a name is invalid'.format(char))
+                vPrint('error', 'Character "{}" not part of a name is invalid'.format(char))
                 return False
 
     # Matching parentheses
     # if source.count('(') != source.count(')'):
-    #     print('Mismatched parenthesis count')
+    #     vPrint('error', 'Mismatched parenthesis count')
     # This method cannot detect out-of-order parentheses that have acceptable count
 
     # Matching parentheses
@@ -74,15 +94,15 @@ def verifyCondition(source, names):
         if char == '(': depth += 1
         if char == ')': depth -= 1
         if depth < 0:
-            print('")" at {} has no matching "("'.format(c))
+            vPrint('error', '")" at {} has no matching "("'.format(c))
             return False
     if depth != 0:
-        print('"(" has no matching ")" at end')
+        vPrint('error', '"(" has no matching ")" at end')
         return False
 
     return True
 
-def evaluateCondition(source, recursiveness=0):
+def evaluateCondition(source, recursiveness=0, verbose=0):
 
     # a&b = a AND b
     # a^b = a XOR b
@@ -90,7 +110,7 @@ def evaluateCondition(source, recursiveness=0):
     # !a = NOT a
     
     if source in ('0', '1'): return source
-    print('| ' * recursiveness + ',-Source: {}'.format(source))
+    vPrint('evaluate', '| ' * recursiveness + ',-Source: {}'.format(source))
 
     # Isolate contents of parenthesis blocks
     while '(' in source or ')' in source:
@@ -112,7 +132,7 @@ def evaluateCondition(source, recursiveness=0):
             elif char == ')': depth -= 1
 
         end = i
-        print('| ' * recursiveness + '|-Parentheses {} thru {}'.format(beg, end))
+        vPrint('evaluate', '| ' * recursiveness + '|-Parentheses {} thru {}'.format(beg, end))
 
         source = source[:beg] + evaluateCondition(source[beg+1:end], recursiveness+1) + source[end+1:]
 
@@ -120,7 +140,7 @@ def evaluateCondition(source, recursiveness=0):
         chunks = [evaluateCondition(chunk, recursiveness+1) for chunk in source.split('|')]
         # OR the first two together and delete the second until there's only one left
         while len(chunks) > 1:
-            print('| ' * recursiveness + '`-{} OR {}'.format(*chunks[0:2]))
+            vPrint('evaluate', '| ' * recursiveness + '`-{} OR {}'.format(*chunks[0:2]))
             chunks[0] = str(int(chunks[0]) | int(chunks[1]))
             del chunks[1]
         return chunks[0]
@@ -129,7 +149,7 @@ def evaluateCondition(source, recursiveness=0):
         chunks = [evaluateCondition(chunk, recursiveness+1) for chunk in source.split('^')]
         # XOR the first two together and delete the second until there's only one left
         while len(chunks) > 1:
-            print('| ' * recursiveness + '`-{} XOR {}'.format(*chunks[0:2]))
+            vPrint('evaluate', '| ' * recursiveness + '`-{} XOR {}'.format(*chunks[0:2]))
             chunks[0] = str(int(chunks[0]) ^ int(chunks[1]))
             del chunks[1]
         return chunks[0]
@@ -138,21 +158,21 @@ def evaluateCondition(source, recursiveness=0):
         chunks = [evaluateCondition(chunk, recursiveness+1) for chunk in source.split('&')]
         # AND the first two together and delete the second until there's only one left
         while len(chunks) > 1:
-            print('| ' * recursiveness + '`-{} AND {}'.format(*chunks[0:2]))
+            vPrint('evaluate', '| ' * recursiveness + '`-{} AND {}'.format(*chunks[0:2]))
             chunks[0] = str(int(chunks[0]) & int(chunks[1]))
             del chunks[1]
         return chunks[0]
     
     elif source[0] == '!':
         chunk = evaluateCondition(source[1:], recursiveness+1)
-        print('| ' * recursiveness + '`-NOT {}'.format(chunk))
+        vPrint('evaluate', '| ' * recursiveness + '`-NOT {}'.format(chunk))
         if chunk == '0': return '1'
         else: return '0'
     
     else: return source
 
 
-def macro_SetState(stateName):
+def macro_SetState(stateName, verbose):
     # Easier way of changing state
     # Requires that State_Set and State_0..State_N be available
     # Treats State_0 as LSB in address
@@ -169,7 +189,7 @@ def macro_SetState(stateName):
         if bits[i] == 1:
             stateLines.append('State_' + str(len(bits) - i - 1))
 
-    print('      State lines: {}'.format(stateLines))
+    vPrint('macro', '      State lines: {}'.format(stateLines))
 
     for line in stateLines:
         result[controlLines.index(line)] = 1
@@ -180,17 +200,17 @@ macros = {
     'SetState': macro_SetState
 }
 
-def encodeStep(step):
+def encodeStep(step, verbose):
     bits = [0] * numControlLines
 
     for entry in step:
         if entry[0] == '/':
             macroName = entry.split(':')[0][1:]
             macroArgs = entry.split(':')[1:]
-            print('      Macro: {}, Args: {}'.format(macroName, macroArgs))
-            result, mask = macros[macroName](*macroArgs)
-            print('      Result: {}'.format(''.join([str(i) for i in result])))
-            print('      Mask:   {}'.format(''.join([str(i) for i in mask])))
+            vPrint('encode', '      Macro: {}, Args: {}'.format(macroName, macroArgs))
+            result, mask = macros[macroName](*macroArgs, verbose)
+            vPrint('encode', '      Result: {}'.format(''.join([str(i) for i in result])))
+            vPrint('encode', '      Mask:   {}'.format(''.join([str(i) for i in mask])))
     
             for i in range(numControlLines):
                 if mask[i]: bits[i] = result[i]
@@ -221,13 +241,13 @@ if __name__ == '__main__':
     stateOrder          = json['StateOrder']
 
     # Verification of line, condition, state, and step counts
-    if len(controlLines) != numControlLines: print('Line count {} does not match provided values'.format(len(controlLines))); exit(1)
-    if len(controlLines) % 8 != 0: print('Line count {} must be a multiple of 8'.format(len(controlLines))); exit(1)
-    if len(conditionLines) != numConditionLines: print('Condition count {} does not match provided values'.format(len(conditionLines))); exit(1)
-    if len(stateOrder) != numStates: print('State order count {} does not match provided values'.format(len(stateOrder))); exit(1)
+    if len(controlLines) != numControlLines:        vPrint('error', 'Line count {} does not match provided values'.format(len(controlLines))); exit(1)
+    if len(controlLines) % 8 != 0:                  vPrint('error', 'Line count {} must be a multiple of 8'.format(len(controlLines))); exit(1)
+    if len(conditionLines) != numConditionLines:    vPrint('error', 'Condition count {} does not match provided values'.format(len(conditionLines))); exit(1)
+    if len(stateOrder) != numStates:                vPrint('error', 'State order count {} does not match provided values'.format(len(stateOrder))); exit(1)
     for s, stateName in enumerate(stateOrder):  # `s` is state name, `state` is state contents
         if len(states[stateName]) > numSteps and s in stateOrder:
-            print('Too many steps ({}) for state {}'.format(len(states[stateName]), s)); exit(1)
+            vPrint('error', 'Too many steps ({}) for state {}'.format(len(states[stateName]), s)); exit(1)
 
     # Encode the steps of each state
     binary = b''
@@ -253,7 +273,7 @@ if __name__ == '__main__':
                 else:
                     if args.verbose >= 2: print('constant')
                     for k in range(2 ** numConditionLines):
-                        binary = binary + encodeStep(step)
+                        binary = binary + encodeStep(step, args.verbose)
 
             # Or can be a dict of conditions and outputs and be conditional
             elif isinstance(step, dict):
@@ -263,7 +283,7 @@ if __name__ == '__main__':
                 for i0, condition in enumerate(step.keys()):
                     print('    Condition: "{}"'.format(condition))
                     if condition != '':
-                        if not verifyCondition(condition, conditionLines): exit(1)  # `verifyCondition` will print the reason
+                        if not verifyCondition(condition, conditionLines, args.verbose): exit(1)  # `verifyCondition` will print the reason
 
                         for i1 in range(2 ** numConditionLines):
                             evaluatable = condition
@@ -272,7 +292,7 @@ if __name__ == '__main__':
                             for i2, conditionLine in enumerate(conditionLines):
                                 evaluatable = evaluatable.replace(conditionLine, bits[i2])
                             
-                            validCases[i1][i0] = evaluateCondition(evaluatable) == '1'
+                            validCases[i1][i0] = evaluateCondition(evaluatable, args.verbose) == '1'
                 
                 # print('    Valid cases:')
                 # for i in validCases: print('    {}'.format(i))
@@ -285,11 +305,11 @@ if __name__ == '__main__':
                     
                     if case.count(True) == 1:
                         print('    Chose: {}'.format(lines[case.index(True)]))
-                        binary = binary + encodeStep(lines[case.index(True)])
+                        binary = binary + encodeStep(lines[case.index(True)], args.verbose)
 
                     elif case.count(True) == 0:
                         print('    Chose: {}'.format(lines[case.index(None)]))
-                        binary = binary + encodeStep(lines[case.index(None)])
+                        binary = binary + encodeStep(lines[case.index(None)], args.verbose)
 
                     else:
                         matchingConditions = []
