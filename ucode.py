@@ -1,6 +1,6 @@
 import argparse, json5
 
-_version = '2.1.0'
+_version = '2.1.0.dev'
 
 
 verbosityLevels = [
@@ -257,10 +257,11 @@ if __name__ == '__main__':
             vPrint('error', 'Too many steps ({}) for state {}'.format(len(states[stateName]), s)); exit(1)
 
     # Encode the steps of each state
-    binary = b''
+    fullBinary = b''
     for stateName in stateOrder:
         state = states[stateName]
         vPrint('state', 'State {}:'.format(stateName))
+        stateBinary = b''
 
         # Allows states to leave off any steps which need not be specified
         # If a state needs less steps than specified, it can define only what it needs and the rest will be filled in
@@ -270,17 +271,18 @@ if __name__ == '__main__':
 
         for s, step in enumerate(states[stateName]):
             vPrint('step', '  Step {}: '.format(s), end='')
+            stepBinary = b''
 
             # Steps can be a list of control lines and be constant
             if isinstance(step, list):
                 if len(step) == 0:
                     vPrint('step', 'blank')
-                    binary = binary + b'\x00' * ((numControlLines // 8) * (2 ** numConditionLines))
+                    stepBinary = stepBinary + b'\x00' * ((numControlLines // 8) * (2 ** numConditionLines))
 
                 else:
                     vPrint('step', 'constant')
                     for k in range(2 ** numConditionLines):
-                        binary = binary + encodeStep(step, args.verbose)
+                        stepBinary = stepBinary + encodeStep(step, args.verbose)
 
             # Or can be a dict of conditions and outputs and be conditional
             elif isinstance(step, dict):
@@ -312,11 +314,11 @@ if __name__ == '__main__':
                     
                     if case.count(True) == 1:
                         vPrint('condition', '    Chose: {}'.format(lines[case.index(True)]))
-                        binary = binary + encodeStep(lines[case.index(True)], args.verbose)
+                        stepBinary = stepBinary + encodeStep(lines[case.index(True)], args.verbose)
 
                     elif case.count(True) == 0:
                         vPrint('condition', '    Chose: {}'.format(lines[case.index(None)]))
-                        binary = binary + encodeStep(lines[case.index(None)], args.verbose)
+                        stepBinary = stepBinary + encodeStep(lines[case.index(None)], args.verbose)
 
                     else:
                         matchingConditions = []
@@ -329,5 +331,8 @@ if __name__ == '__main__':
             else:
                 vPrint('error', 'Step {} must be of type list or dict'.format(s)); exit(1)
 
-    with open(args.outfile, 'wb') as file: file.write(binary)
+            stateBinary = stateBinary + stepBinary
+        fullBinary = fullBinary + stateBinary
+
+    with open(args.outfile, 'wb') as file: file.write(fullBinary)
     vPrint('info', 'Wrote binary to {}'.format(args.outfile))
