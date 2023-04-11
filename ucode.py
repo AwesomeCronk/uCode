@@ -1,6 +1,6 @@
 import argparse, json5
 
-_version = '2.0.0'
+_version = '2.1.0'
 
 
 verbosityLevels = [
@@ -8,8 +8,8 @@ verbosityLevels = [
     'info',
     'state',
     'step',
-    'encode',
     'condition',
+    'encode',
     'verify',
     'evaluate',
     'macro'
@@ -18,7 +18,7 @@ verbosityLevels = [
 verbosityLevel = 1
 
 def vPrint(verbosity, *args, **kwargs):
-    if verbosityLevels.index(verbosity) <= verbosityLevel:
+    if verbosityLevel >= verbosityLevels.index(verbosity):
         print(*args, **kwargs)
 
 
@@ -38,14 +38,14 @@ def getArgs():
         '-v',
         '--verbose',
         help='Set output verbosity',
-        type=int,
-        default=0
+        type=str,
+        default='1'
     )
 
     return parser.parse_args()
 
 
-def verifyCondition(source, names, verbose):
+def verifyCondition(source, names):
     specialChars = '!&^|()'
 
     # No special characters in names
@@ -227,7 +227,14 @@ def encodeStep(step, verbose):
 
 if __name__ == '__main__':
     args = getArgs()
-    print('uCode {}'.format(_version))
+    try:
+        verbosityLevel = int(args.verbose)
+    except ValueError:
+        if args.verbose in verbosityLevels:
+            verbosityLevel = verbosityLevels.index(args.verbose)
+        else:
+            vPrint('error', 'Invalid verbosity "{}"'.format(args.verbose)); exit(1)
+    vPrint('info', 'uCode {}'.format(_version))
 
     with open(args.infile, 'r') as jsonFile: json = json5.load(jsonFile)
 
@@ -253,37 +260,37 @@ if __name__ == '__main__':
     binary = b''
     for stateName in stateOrder:
         state = states[stateName]
-        if args.verbose >= 1: print('State {}:'.format(stateName))
+        vPrint('state', 'State {}:'.format(stateName))
 
         # Allows states to leave off any steps which need not be specified
         # If a state needs less steps than specified, it can define only what it needs and the rest will be filled in
         while len(states[stateName]) < numSteps:
             try: states[stateName].append(json['DefaultStep'])
-            except IndexError: print('Not all steps defined in state {} but defaultStep is not defined'.format(stateName)); exit(1)
+            except IndexError: vPrint('error', 'Not all steps defined in state {} but defaultStep is not defined'.format(stateName)); exit(1)
 
         for s, step in enumerate(states[stateName]):
-            if args.verbose >= 2: print('  Step {}: '.format(s), end='')
+            vPrint('step', '  Step {}: '.format(s), end='')
 
             # Steps can be a list of control lines and be constant
             if isinstance(step, list):
                 if len(step) == 0:
-                    if args.verbose >= 2: print('blank')
+                    vPrint('step', 'blank')
                     binary = binary + b'\x00' * ((numControlLines // 8) * (2 ** numConditionLines))
 
                 else:
-                    if args.verbose >= 2: print('constant')
+                    vPrint('step', 'constant')
                     for k in range(2 ** numConditionLines):
                         binary = binary + encodeStep(step, args.verbose)
 
             # Or can be a dict of conditions and outputs and be conditional
             elif isinstance(step, dict):
-                if args.verbose >= 2: print('conditional')
+                vPrint('step', 'conditional')
                 validCases = [[None] * len(step) for _ in range(2 ** numConditionLines)]    # List of lists; indexed by case number, sublists indexed by condition number
 
                 for i0, condition in enumerate(step.keys()):
-                    print('    Condition: "{}"'.format(condition))
+                    vPrint('condition', '    Condition: "{}"'.format(condition))
                     if condition != '':
-                        if not verifyCondition(condition, conditionLines, args.verbose): exit(1)  # `verifyCondition` will print the reason
+                        if not verifyCondition(condition, conditionLines): exit(1)  # `verifyCondition` will print the reason
 
                         for i1 in range(2 ** numConditionLines):
                             evaluatable = condition
@@ -298,17 +305,17 @@ if __name__ == '__main__':
                 # for i in validCases: print('    {}'.format(i))
 
                 lines = list(step.values())
-                print('    Lines: {}'.format(lines))
+                vPrint('condition', '    Lines: {}'.format(lines))
 
                 for i0, case in enumerate(validCases):
-                    # print('    Case: {}, Matches: {}'.format(case, case.count(True)))
+                    # vPrint('condition', '    Case: {}, Matches: {}'.format(case, case.count(True)))
                     
                     if case.count(True) == 1:
-                        print('    Chose: {}'.format(lines[case.index(True)]))
+                        vPrint('condition', '    Chose: {}'.format(lines[case.index(True)]))
                         binary = binary + encodeStep(lines[case.index(True)], args.verbose)
 
                     elif case.count(True) == 0:
-                        print('    Chose: {}'.format(lines[case.index(None)]))
+                        vPrint('condition', '    Chose: {}'.format(lines[case.index(None)]))
                         binary = binary + encodeStep(lines[case.index(None)], args.verbose)
 
                     else:
@@ -317,10 +324,10 @@ if __name__ == '__main__':
                             if match:
                                 matchingConditions.append(step.keys()[i1])
 
-                        print('Case {} matches multiple conditions: "{}"'.format(bin(i0)[2:], '", "'.join(matchingConditions)))
+                        vPrint('error', 'Case {} matches multiple conditions: "{}"'.format(bin(i0)[2:], '", "'.join(matchingConditions)))
             
             else:
-                print('Step {} must be of type list or dict'.format(s)); exit(1)
+                vPrint('error', 'Step {} must be of type list or dict'.format(s)); exit(1)
 
     with open(args.outfile, 'wb') as file: file.write(binary)
-    print('Wrote binary to {}'.format(args.outfile))
+    vPrint('info', 'Wrote binary to {}'.format(args.outfile))
