@@ -15,6 +15,11 @@ verbosityLevels = [
     'macro'
 ]
 
+options = {
+    'StateAddr': 'Binary',
+    'StepAddr': 'Binary'
+}
+
 verbosityLevel = 1
 
 def vPrint(verbosity, *args, **kwargs):
