@@ -20,6 +20,11 @@ options = {
     'StepAddr': 'Binary'
 }
 
+validOptions = {
+    'StateAddr': ('Binary', 'PriorityEncode'),
+    'StepAddr': ('Binary', 'PriorityEncode')
+}
+
 verbosityLevel = 1
 
 def vPrint(verbosity, *args, **kwargs):
@@ -243,37 +248,63 @@ if __name__ == '__main__':
 
     with open(args.infile, 'r') as jsonFile: json = json5.load(jsonFile)
 
-    numControlLines     = json['NumControlLines']
-    numConditionLines   = json['NumConditionLines']
-    numStates           = json['NumStates']
-    numSteps            = json['NumSteps']
-    controlLines        = json['ControlLines']
-    conditionLines      = json['ConditionLines']
-    states              = json['States']
-    stateOrder          = json['StateOrder']
+    numControlLines   = json['NumControlLines']
+    numConditionLines = json['NumConditionLines']
+    numStates         = json['NumStates']
+    numSteps          = json['NumSteps']
+    controlLines      = json['ControlLines']
+    conditionLines    = json['ConditionLines']
+    states            = json['States']
+    stateOrder        = json['StateOrder']
 
-    # Verification of line, condition, state, and step counts
-    if len(controlLines) != numControlLines:        vPrint('error', 'Line count {} does not match provided values'.format(len(controlLines))); exit(1)
-    if len(controlLines) % 8 != 0:                  vPrint('error', 'Line count {} must be a multiple of 8'.format(len(controlLines))); exit(1)
-    if len(conditionLines) != numConditionLines:    vPrint('error', 'Condition count {} does not match provided values'.format(len(conditionLines))); exit(1)
-    if len(stateOrder) != numStates:                vPrint('error', 'State order count {} does not match provided values'.format(len(stateOrder))); exit(1)
-    for s, stateName in enumerate(stateOrder):  # `s` is state name, `state` is state contents
-        if len(states[stateName]) > numSteps and s in stateOrder:
-            vPrint('error', 'Too many steps ({}) for state {}'.format(len(states[stateName]), s)); exit(1)
 
-    # Encode the steps of each state
-    fullBinary = b''
+    ### Verification of line, condition, state, and step counts ###
+
+    if len(controlLines) != numControlLines:
+        vPrint('error', 'Control line count {} invalid, expected {}'.format(len(controlLines), numControlLines))
+        exit(1)
+    if len(controlLines) % 8 != 0:
+        vPrint('error', 'Control line count {} invalid, must be a multiple of 8'.format(len(controlLines)))
+        exit(1)
+    if len(conditionLines) != numConditionLines:
+        vPrint('error', 'Condition line count {} invalid, expected {}'.format(len(conditionLines), numConditionLines))
+        exit(1)
+    
+    # If option `StateAddr` is set to `PriorityEncode` then a fallback state needs to be defined
+    if options['StateAddr'] == 'Binary': actualNumStates = numStates
+    elif options['StateAddr'] == 'PriorityEncode': actualNumStates = numStates + 1
+
+    # If option `StepAddr` is set to `PriorityEncode` then a fallback step can be defined (will use defaultStep if not)
+    if options['StepAddr'] == 'Binary': actualNumSteps = numSteps
+    elif options['StepAddr'] == 'PriorityEncode': actualNumSteps = numSteps + 1
+
+    if len(stateOrder) != actualNumStates: 
+        vPrint('error', 'State order count {} invalid, expected {}'.format(len(stateOrder), actualNumStates))
+        exit(1)
+
+    for stateName in stateOrder:
+        if len(states[stateName]) > actualNumSteps:
+            vPrint('error', 'State {} step count {} invalid, exceeds {}'.format(stateName, len(states[stateName]), actualNumSteps))
+            exit(1)
+
+
+    ### Encode the steps of each state ###
+
+    # Iterate states
+    stateBinaries = []
     for stateName in stateOrder:
         state = states[stateName]
         vPrint('state', 'State {}:'.format(stateName))
-        stateBinary = b''
 
         # Allows states to leave off any steps which need not be specified
         # If a state needs less steps than specified, it can define only what it needs and the rest will be filled in
-        while len(states[stateName]) < numSteps:
+
+        while len(states[stateName]) < actualNumSteps:
             try: states[stateName].append(json['DefaultStep'])
             except IndexError: vPrint('error', 'Not all steps defined in state {} but defaultStep is not defined'.format(stateName)); exit(1)
 
+        # Iterate steps
+        stepBinaries = []
         for s, step in enumerate(states[stateName]):
             vPrint('step', '  Step {}: '.format(s), end='')
             stepBinary = b''
@@ -336,8 +367,45 @@ if __name__ == '__main__':
             else:
                 vPrint('error', 'Step {} must be of type list or dict'.format(s)); exit(1)
 
-            stateBinary = stateBinary + stepBinary
-        fullBinary = fullBinary + stateBinary
+            stepBinaries.append(stepBinary)
+        
+        # Compile step binaries to form a state binary
+        if options['StepAddr'] == 'Binary':
+            stateBinary = b''.join(stepBinaries)
+        elif options['StepAddr'] == 'PriorityEncode':
+            # See addressing table below
+            stateBinary = stepBinaries[-1]
+            for s, stepBinary in enumerate(stepBinaries[0:-1]):
+                stateBinary = stateBinary + (stepBinaries * (2 ** s))
 
+        stateBinaries.append(stateBinary)
+    
+    # Compile state binaries to form the full binary
+    if options['StateAddr'] == 'Binary':
+        fullBinary = b''.join(stateBinaries)
+    elif options['StateAddr'] == 'PriorityEncode':
+        # See addressing table below
+        fullBinary = stateBinaries[-1]
+        for s, stepBinary in enumerate(stateBinaries[0:-1]):
+            fullBinary = fullBinary + (stateBinaries * (2 ** s))
+
+    # Addressing table for ProrityEncode modes
+    # 0000 0: Blank
+    # 0001 1: Step0
+    # 0010 2: Step1
+    # 0011 3: Step1
+    # 0100 4: Step2
+    # 0101 5: Step2
+    # 0110 6: Step2
+    # 0111 7: Step2
+    # 1000 8: Step3
+    # 1001 9: Step3
+    # 1010 A: Step3
+    # 1011 B: Step3
+    # 1100 C: Step3
+    # 1101 D: Step3
+    # 1110 E: Step3
+    # 1111 F: Step3
+    
     with open(args.outfile, 'wb') as file: file.write(fullBinary)
     vPrint('info', 'Wrote binary to {}'.format(args.outfile))
