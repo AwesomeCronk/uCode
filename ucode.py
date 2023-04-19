@@ -246,6 +246,9 @@ if __name__ == '__main__':
             vPrint('error', 'Invalid verbosity "{}"'.format(args.verbose)); exit(1)
     vPrint('info', 'uCode {}'.format(_version))
 
+
+    ### Load JSON5 source ###
+
     with open(args.infile, 'r') as jsonFile: json = json5.load(jsonFile)
 
     numControlLines   = json['NumControlLines']
@@ -257,14 +260,31 @@ if __name__ == '__main__':
     states            = json['States']
     stateOrder        = json['StateOrder']
 
+    if 'Options' in json.keys():
+        chosenOptions = json['Options']
+        for key in chosenOptions.keys():
 
-    ### Verification of line, condition, state, and step counts ###
+            try:
+                value = chosenOptions[key]
+                
+                if not value in validOptions[key]:
+                    vPrint('error', 'Invalid option value {} for {}'.format(value, key))
+                    exit(1)
+                
+                options[key] = value
+
+            except KeyError:
+                vPrint('error', 'Invalid option key {}'.format(key))
+                exit(1)
+
+
+    ### Verify line, condition, state, and step counts ###
 
     if len(controlLines) != numControlLines:
         vPrint('error', 'Control line count {} invalid, expected {}'.format(len(controlLines), numControlLines))
         exit(1)
-    if len(controlLines) % 8 != 0:
-        vPrint('error', 'Control line count {} invalid, must be a multiple of 8'.format(len(controlLines)))
+    if numControlLines % 8 != 0:
+        vPrint('error', 'Control line count {} invalid, must be a multiple of 8'.format(numControlLines))
         exit(1)
     if len(conditionLines) != numConditionLines:
         vPrint('error', 'Condition line count {} invalid, expected {}'.format(len(conditionLines), numConditionLines))
@@ -300,8 +320,11 @@ if __name__ == '__main__':
         # If a state needs less steps than specified, it can define only what it needs and the rest will be filled in
 
         while len(states[stateName]) < actualNumSteps:
-            try: states[stateName].append(json['DefaultStep'])
-            except IndexError: vPrint('error', 'Not all steps defined in state {} but defaultStep is not defined'.format(stateName)); exit(1)
+            try:
+                states[stateName].append(json['DefaultStep'])
+            except KeyError:
+                vPrint('error', 'Not all steps defined in state {} but DefaultStep is not defined'.format(stateName))
+                exit(1)
 
         # Iterate steps
         stepBinaries = []
@@ -365,29 +388,39 @@ if __name__ == '__main__':
                         vPrint('error', 'Case {} matches multiple conditions: "{}"'.format(bin(i0)[2:], '", "'.join(matchingConditions)))
             
             else:
-                vPrint('error', 'Step {} must be of type list or dict'.format(s)); exit(1)
+                vPrint('error', 'Step {} must be of type list or dict'.format(s))
+                exit(1)
 
             stepBinaries.append(stepBinary)
         
+
         # Compile step binaries to form a state binary
+        vPrint('encode', 'Addressing steps in {} mode'.format(options['StepAddr']))
+        
         if options['StepAddr'] == 'Binary':
             stateBinary = b''.join(stepBinaries)
+
         elif options['StepAddr'] == 'PriorityEncode':
             # See addressing table below
-            stateBinary = stepBinaries[-1]
+            stateBinary = stepBinaries[-1]  # Puts the fallback at address 0
             for s, stepBinary in enumerate(stepBinaries[0:-1]):
-                stateBinary = stateBinary + (stepBinaries * (2 ** s))
+                stateBinary = stateBinary + (stepBinary * (2 ** s))
 
         stateBinaries.append(stateBinary)
-    
+
+
     # Compile state binaries to form the full binary
+    vPrint('encode', 'Addressing states in {} mode'.format(options['StateAddr']))
+    
     if options['StateAddr'] == 'Binary':
         fullBinary = b''.join(stateBinaries)
+
     elif options['StateAddr'] == 'PriorityEncode':
         # See addressing table below
-        fullBinary = stateBinaries[-1]
-        for s, stepBinary in enumerate(stateBinaries[0:-1]):
-            fullBinary = fullBinary + (stateBinaries * (2 ** s))
+        fullBinary = stateBinaries[-1]  # Puts the fallback at address 0
+        for s, stateBinary in enumerate(stateBinaries[0:-1]):
+            fullBinary = fullBinary + (stateBinary * (2 ** s))
+
 
     # Addressing table for ProrityEncode modes
     # 0000 0: Blank
