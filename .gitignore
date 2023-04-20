@@ -1,1 +1,5 @@
 *.bin
+ucode.build
+ucode.dist
+release*.zip
+release*.7z

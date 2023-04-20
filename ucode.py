@@ -1,6 +1,6 @@
 import argparse, json5
 
-_version = '2.1.0.dev'
+_version = '2.1.0'
 
 
 verbosityLevels = [
@@ -93,12 +93,7 @@ def verifyCondition(source, names):
                 vPrint('error', 'Character "{}" not part of a name is invalid'.format(char))
                 return False
 
-    # Matching parentheses
-    # if source.count('(') != source.count(')'):
-    #     vPrint('error', 'Mismatched parenthesis count')
-    # This method cannot detect out-of-order parentheses that have acceptable count
-
-    # Matching parentheses
+    # No mismatching parentheses
     depth = 0
     for c, char in enumerate(source):
         if char == '(': depth += 1
@@ -107,7 +102,7 @@ def verifyCondition(source, names):
             vPrint('error', '")" at {} has no matching "("'.format(c))
             return False
     if depth != 0:
-        vPrint('error', '"(" has no matching ")" at end')
+        vPrint('error', '"(" has no matching ")"')
         return False
 
     return True
@@ -251,14 +246,30 @@ if __name__ == '__main__':
 
     with open(args.infile, 'r') as jsonFile: json = json5.load(jsonFile)
 
-    numControlLines   = json['NumControlLines']
-    numConditionLines = json['NumConditionLines']
-    numStates         = json['NumStates']
-    numSteps          = json['NumSteps']
-    controlLines      = json['ControlLines']
-    conditionLines    = json['ConditionLines']
-    states            = json['States']
-    stateOrder        = json['StateOrder']
+    try: numControlLines      = json['NumControlLines']
+    except KeyError: vPrint('error', 'NumControlLines not defined'); exit(1)
+
+    try: numConditionLines    = json['NumConditionLines']
+    except KeyError: vPrint('error', 'NumConditionLines not defined'); exit(1)
+
+    try: numStates            = json['NumStates']
+    except KeyError: vPrint('error', 'NumStates not defined'); exit(1)
+
+    try: numSteps             = json['NumSteps']
+    except KeyError: vPrint('error', 'NumSteps not defined'); exit(1)
+
+    try: controlLines         = json['ControlLines']
+    except KeyError: vPrint('error', 'ControlLines not defined'); exit(1)
+
+    try: conditionLines       = json['ConditionLines']
+    except KeyError: vPrint('error', 'ConditionLines not defined'); exit(1)
+
+    try: states               = json['States']
+    except KeyError: vPrint('error', 'States not defined'); exit(1)
+
+    try: stateOrder           = json['StateOrder']
+    except KeyError: vPrint('error', 'StateOrder not defined'); exit(1)
+
 
     if 'Options' in json.keys():
         chosenOptions = json['Options']
